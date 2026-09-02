@@ -281,6 +281,11 @@ def reset(path, tab):
     if state.get("released"):
         return
 
+    # a tab we never named has nothing to clear, and giving it the shell's name
+    # would be inventing one where Herdr's own label was doing no harm
+    if not state.get("name"):
+        return
+
     # the old name now describes work that is over, so the tab is set back to
     # the label that asks to be named. Remembering it is what lets a rename
     # you make between here and the next input still count as yours.

@@ -117,7 +117,7 @@ pace_max: 32   ceiling once the name has settled
 
 ## Starting different work in the same tab
 
-Two things forget a tab's topic, so the next input names it afresh. The tab is set back to what the pane is actually running — its agent (`claude`, `omp`, `hermes`) or its shell (`fish`, `zsh`) — because the old name now describes work that is over:
+Two things forget a tab's topic, so the next input names it afresh. A tab that had a name is set back to what the pane is actually running — its agent (`claude`, `omp`, `hermes`) or its shell (`fish`, `zsh`) — because the old name now describes work that is over. A tab that was never named keeps whatever Herdr calls it; there is nothing to clear, and naming it `fish` would be inventing something:
 
 - **`clear`** (or `reset`) in a shell — the natural way to say a tab has moved on, and the only way to rename a shell tab, which is otherwise named once and left alone.
 - **`/clear`** in Claude Code, through a `SessionStart` hook:
