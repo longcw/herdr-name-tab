@@ -422,7 +422,11 @@ def watch(days):
                 stamp, rows = now, load_log()
             draw(screen, rows, window)
 
-            key = screen.getch()
+            try:
+                key = screen.getch()
+            except KeyboardInterrupt:
+                return
+
             if key in (ord("q"), 27):
                 return
             if key == ord("1"):
@@ -434,7 +438,11 @@ def watch(days):
             elif key == curses.KEY_RESIZE:
                 stamp = None
 
-    curses.wrapper(loop)
+    try:
+        curses.wrapper(loop)
+    except KeyboardInterrupt:
+        # wrapper restores the terminal on its way out; nothing to report
+        pass
 
 
 def main():
@@ -572,4 +580,10 @@ def main():
         json.dump(state, handle)
 
 
-main()
+try:
+    main()
+except KeyboardInterrupt:
+    sys.exit(130)
+except BrokenPipeError:
+    # `--stats | head` closes the pipe early, which is not a failure
+    os._exit(0)
