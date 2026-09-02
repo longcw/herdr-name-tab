@@ -1,0 +1,185 @@
+#!/usr/bin/env python3
+"""Name the Herdr tab this process runs in, from what was typed into it."""
+
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.request
+
+MAX_LEN = 16
+STATE_DIR = os.path.expanduser("~/.local/state/herdr-tab-names")
+CONFIG_PATH = os.path.expanduser("~/.config/herdr-name-tab/config.json")
+
+# commands that say nothing about what a tab is for
+IGNORED = {"cd", "ls", "ll", "clear", "exit", "pwd", "z", "cat", "which", "echo"}
+# an agent names its tab from its prompts, not from the command that launched it
+AGENTS = {"claude", "codex", "copilot", "droid", "opencode", "cursor", "qwen", "grok", "kimi"}
+
+PROMPT = """You name terminal tabs. Reply with the tab name only, nothing else.
+
+A name is:
+- one word; two only when one cannot identify the work; never three
+- all lowercase, a hyphen between two words, no spaces or punctuation
+- at most 16 characters
+- just the number when the work ITSELF is an issue, PR or ticket. A number mentioned in passing is not the name
+- the distinctive term, never a general one. agent, cloud, code, session, protocol, task, server, api, fix, test, update, plugin are general - reach past them for what makes THIS work different
+
+ANCHOR is the first thing typed in this tab. It defines what the tab is for.
+LATEST is the most recent thing typed. It is almost always the same work continuing - a follow-up, a correction, a question, a new angle on the same job.
+NAME is what the tab is called now.
+
+Your answer is NAME, copied exactly, unless LATEST turns the tab to work unrelated to ANCHOR.
+Changing tools, changing your mind, correcting course or digging into a detail is the same work, and the same name.
+A better name for the same work is not a reason to change it. Only an unrelated subject is.
+When NAME is (none), name the work in ANCHOR."""
+
+try:
+    with open(CONFIG_PATH) as handle:
+        CONFIG = json.load(handle)
+except Exception:
+    CONFIG = {}
+
+
+def setting(key, default=None):
+    """A setting from the environment, then the config file, then the default."""
+    return os.environ.get("HERDR_NAME_TAB_" + key.upper()) or CONFIG.get(key) or default
+
+
+def ask_model(query):
+    """Ask the configured model to name the tab, or "" when it cannot be reached."""
+    url = setting("api_url")
+
+    if not url:
+        # no endpoint configured: the CLI works but boots a whole process per
+        # call, which costs about four seconds against under one over HTTP
+        try:
+            return subprocess.run(
+                ["claude", "-p", "--model", setting("model", "haiku")],
+                input=query, capture_output=True, text=True, timeout=60,
+            ).stdout
+        except Exception:
+            return ""
+
+    if not url.rstrip("/").endswith("/chat/completions"):
+        url = url.rstrip("/") + "/chat/completions"
+
+    key = setting("api_key") or os.environ.get(setting("api_key_env", "OPENAI_API_KEY"), "")
+    headers = {"content-type": "application/json"}
+    if key:
+        headers["authorization"] = "Bearer " + key
+
+    body = json.dumps({
+        "model": setting("model", "gpt-4o-mini"),
+        "messages": [{"role": "user", "content": query}],
+        "max_tokens": 16,
+        "temperature": 0,
+    }).encode()
+
+    try:
+        request = urllib.request.Request(url, data=body, headers=headers, method="POST")
+        with urllib.request.urlopen(request, timeout=15) as response:
+            return json.load(response)["choices"][0]["message"]["content"]
+    except Exception:
+        return ""
+
+
+def latest_input():
+    """The text to name from: a hook's JSON prompt on stdin, or the argv command."""
+    if len(sys.argv) > 1:
+        command = " ".join(sys.argv[1:]).strip()
+        head = re.split(r"[\s;|&]+", command)[0].rsplit("/", 1)[-1]
+        if head in IGNORED or head in AGENTS:
+            return ""
+        return command
+
+    if sys.stdin.isatty():
+        return ""
+
+    try:
+        return str(json.load(sys.stdin).get("prompt") or "").strip()
+    except Exception:
+        return ""
+
+
+def slug(raw):
+    """Reduce a model answer to a tab label, or "" when it produced none."""
+    name = raw.strip().splitlines()[0] if raw.strip() else ""
+
+    # a model that answered in a sentence did not answer with a name
+    if len(name.split()) > 3:
+        return ""
+
+    name = re.sub(r"[^a-z0-9-]+", "-", name.lower()).strip("-")
+    name = re.sub(r"-{2,}", "-", name)
+
+    # two words at most, whatever the model answered
+    name = "-".join(name.split("-")[:2])
+
+    if len(name) > MAX_LEN:
+        # cut on a hyphen so the label ends on a whole word
+        name = name[:MAX_LEN].rsplit("-", 1)[0] if "-" in name[:MAX_LEN] else name[:MAX_LEN]
+
+    return name.strip("-")
+
+
+def main():
+    tab = os.environ.get("HERDR_TAB_ID")
+    if os.environ.get("HERDR_ENV") != "1" or not tab or not os.environ.get("HERDR_SOCKET_PATH"):
+        return
+
+    text = latest_input()
+    if not text:
+        return
+
+    path = os.path.join(STATE_DIR, re.sub(r"[^A-Za-z0-9]", "_", tab) + ".json")
+    try:
+        with open(path) as handle:
+            state = json.load(handle)
+    except Exception:
+        state = {}
+
+    # a tab renamed by anyone but us is theirs, and stays theirs
+    if state.get("released"):
+        return
+
+    try:
+        listed = json.loads(subprocess.run(
+            ["herdr", "tab", "list"], capture_output=True, text=True, timeout=5
+        ).stdout)["result"]["tabs"]
+    except Exception:
+        return
+
+    label = next((t["label"] for t in listed if t["tab_id"] == tab), None)
+    if label is None:
+        return
+
+    ours = state.get("name")
+    if ours and label != ours:
+        state["released"] = True
+        os.makedirs(STATE_DIR, exist_ok=True)
+        with open(path, "w") as handle:
+            json.dump(state, handle)
+        return
+
+    if ours and time.time() - state.get("asked_at", 0) < float(setting("throttle", 60)):
+        return
+
+    anchor = state.get("anchor") or text
+    name = slug(ask_model(f"{PROMPT}\n\nANCHOR: {anchor}\nNAME: {ours or '(none)'}\nLATEST: {text}\n"))
+    if not name:
+        return
+
+    state.update(anchor=anchor, asked_at=time.time())
+    if name != ours:
+        subprocess.run(["herdr", "tab", "rename", tab, name], capture_output=True, timeout=5)
+        state["name"] = name
+
+    os.makedirs(STATE_DIR, exist_ok=True)
+    with open(path, "w") as handle:
+        json.dump(state, handle)
+
+
+main()

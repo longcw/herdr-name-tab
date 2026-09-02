@@ -1,0 +1,8 @@
+{
+  "_comment": "Copy to config.json. Any OpenAI-compatible endpoint. Without api_url the Claude CLI is used, which costs about 4s per call instead of under 1s.",
+
+  "api_url": "https://api.openai.com/v1",
+  "api_key_env": "OPENAI_API_KEY",
+  "model": "gpt-4o-mini",
+  "throttle": 60
+}
