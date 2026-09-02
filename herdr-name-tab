@@ -164,6 +164,11 @@ def main():
             json.dump(state, handle)
         return
 
+    # a shell holds many unrelated commands, so every one of them would read as
+    # a change of subject: a tab named from a command keeps that name
+    if ours and len(sys.argv) > 1:
+        return
+
     if ours and time.time() - state.get("asked_at", 0) < float(setting("throttle", 60)):
         return
 

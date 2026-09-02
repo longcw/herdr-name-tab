@@ -87,6 +87,8 @@ A local runtime works and costs nothing per call — the task is small enough fo
 
 Every key can also be set as `HERDR_NAME_TAB_API_URL`, `HERDR_NAME_TAB_MODEL`, and so on. `throttle` is the least time between two evaluations of one tab, in seconds.
 
+A tab named from a **command** is named once and keeps that name: a shell holds many unrelated commands, and re-reading each one would rename the tab all day. Only a tab named from an agent's prompts is re-evaluated, because there the whole session is one task.
+
 ## Naming a tab yourself
 
 Rename a tab by hand and the script never touches it again — the name is yours. It records this in `~/.local/state/herdr-tab-names/`; delete a tab's file there to hand it back.
