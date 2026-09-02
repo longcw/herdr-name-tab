@@ -32,6 +32,9 @@ IGNORED = {
 AGENTS = {"claude", "codex", "copilot", "droid", "opencode", "cursor", "qwen", "grok", "kimi"}
 # what a pane is running when it is running nothing in particular
 SHELLS = {"bash", "zsh", "fish", "sh", "dash", "ksh", "tcsh", "csh", "nu", "xonsh", "elvish"}
+# commands that put you somewhere else: they make the tab's current name wrong,
+# they name it for as long as they run, and nothing fires again until they exit
+TAKEOVER = {"ssh", "mosh", "et", "telnet", "tsh", "sshpass", "vagrant", "distrobox"}
 
 PROMPT = """You name terminal tabs. Reply with the tab name only, nothing else.
 
@@ -276,7 +279,13 @@ def main():
     if fresh:
         ours = None
 
-    if ours and len(sys.argv) > 1:
+    # a takeover command starts new work and is the last thing this tab will
+    # report, so it names the tab whatever the tab was called and whatever the
+    # pace says
+    if len(sys.argv) > 1 and head_of(" ".join(sys.argv[1:])) in set(setting("takeover", TAKEOVER)):
+        ours = None
+        state.pop("anchor", None)
+    elif ours and len(sys.argv) > 1:
         return
 
     # a name that keeps surviving is unlikely to need changing, so each

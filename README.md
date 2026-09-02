@@ -87,6 +87,20 @@ A local runtime works and costs nothing per call — the task is small enough fo
 
 Every key can also be set as `HERDR_NAME_TAB_API_URL`, `HERDR_NAME_TAB_MODEL`, and so on.
 
+## Commands that take over the pane
+
+A shell tab is named once, so later commands leave it alone. `ssh` is the exception: it puts you on another machine, which makes the tab's current name wrong, and no hook fires again until you log out — so the tab would stay wrong for the whole session. Those commands always rename, ignoring both the one-shot rule and the pace:
+
+```
+npm run dev --workspace api   ->  api
+git status                    ->  api        unchanged
+ssh deploy@prod-01            ->  prod-01
+mosh backup-2                 ->  backup-2
+htop                          ->  backup-2   unchanged
+```
+
+`htop`, `btop` and `top` are deliberately not in the list. They hold the pane too, but they do not make the existing name wrong: you are still working on the same thing, just looking at a process list, and a tab called `api` should still say `api` when you quit. Editors are left out for the same reason — opening a config file for ten seconds should not rename the tab. Add any of them to `takeover` if you disagree.
+
 ## Pacing
 
 A tab with no name is named at once. After that the number of inputs skipped doubles with every answer that leaves the name alone, so checks fall on turns 1, 3, 7, 15, 31 — five calls across forty prompts. A name that *does* change resets the pace.

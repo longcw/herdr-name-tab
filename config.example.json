@@ -14,6 +14,9 @@
   "_clear_label_note": "What a tab is called after a clear. \"auto\" uses the pane's agent (claude, omp, hermes) or its shell (fish, zsh); a literal string is used as-is.",
   "clear_label": "auto",
 
+  "_takeover_note": "Commands that always rename the tab, whatever it is called and whatever the pace says, because they put you somewhere else and nothing fires again until they exit. Add htop or nvim here if you want those to rename too.",
+  "takeover": ["ssh", "mosh", "et", "telnet", "tsh", "sshpass", "vagrant", "distrobox"],
+
   "_ignore_note": "Commands that never name a tab. Setting this replaces the built-in list. clear and reset are not ignored: they forget the tab's topic.",
   "ignore": ["cd", "z", "pushd", "popd", "ls", "ll", "la", "lsd", "eza", "exa", "tree", "pwd",
              "exit", "logout",
