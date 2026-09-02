@@ -159,9 +159,12 @@ Calls are rarer than the triggers suggest:
 ## What it has been doing
 
 ```
-herdr-name-tab --stats        # last 30 days
+herdr-name-tab --stats        # last 30 days, printed once
 herdr-name-tab --stats 7      # last 7
+herdr-name-tab --watch        # the same, live: 1 today, 7 week, 3 month, q quit
 ```
+
+`--watch` redraws as namings land, so you can leave it in a pane and watch tabs name themselves.
 
 ```
 period          namings   calls    tokens  renames
@@ -177,7 +180,7 @@ recent names
   09-02 20:30  prompt  port the oauth device flow to the js sdk      -> oauth-device   377 tok
 ```
 
-*namings* counts every time a tab was named; *calls* counts the ones that asked a model, so an ssh name shows as a naming and not a call. Every naming is appended to `~/.local/state/herdr-tab-names/calls.jsonl`, which is halved when it passes 2 MB rather than growing without limit. The inputs recorded are the same capped 240 characters that were sent.
+*namings* counts every time a tab was named; *calls* counts the ones that asked a model, so an ssh name shows as a naming and not a call. Every naming is appended to `~/.local/state/herdr-tab-names/calls.jsonl` — one JSON object per line, holding the input, the name, the tokens, the model and the time taken. It, which is halved when it passes 2 MB rather than growing without limit. The inputs recorded are the same capped 240 characters that were sent.
 
 ## Naming a tab yourself
 

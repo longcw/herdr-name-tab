@@ -31,6 +31,8 @@ IGNORED = {
     "echo", "which", "type", "whoami", "date", "uptime", "man", "history",
     "env", "printenv", "export", "source", "alias", "unalias",
     "cat", "bat", "less", "more",
+    # the tool itself, and the multiplexer it drives: running either is not work
+    "herdr", "herdr-name-tab",
 }
 # an agent names its tab from its prompts, not from the command that launched it
 AGENTS = {"claude", "codex", "copilot", "droid", "opencode", "cursor", "qwen", "grok", "kimi"}
@@ -295,29 +297,17 @@ def reset(path, tab):
 
 def stats(days):
     """Print what the namer has called, cost and produced over the last `days`."""
-    try:
-        with open(LOG_PATH) as handle:
-            rows = [json.loads(line) for line in handle if line.strip()]
-    except Exception:
-        rows = []
-
+    rows = load_log()
     cutoff = time.time() - days * 86400
     rows = [r for r in rows if r.get("at", 0) >= cutoff]
     if not rows:
         print(f"no namings in the last {days} days ({LOG_PATH})")
         return
 
-    def totals(since):
-        picked = [r for r in rows if r.get("at", 0) >= time.time() - since * 86400]
-        used = sum((r.get("tokens_in") or 0) + (r.get("tokens_out") or 0) for r in picked)
-        # an ssh name is parsed, not asked for, so it is a naming but not a call
-        asked = sum(1 for r in picked if r.get("kind") != "ssh")
-        return len(picked), asked, used, sum(1 for r in picked if r.get("changed"))
-
     print(f"{'period':<14}{'namings':>9}{'calls':>8}{'tokens':>10}{'renames':>9}")
     for label, since in (("today", 1), ("last 7 days", 7), ("last 30 days", 30)):
         if since <= days:
-            n, calls, used, changed = totals(since)
+            n, calls, used, changed = summarize(rows, since)
             print(f"{label:<14}{n:>9}{calls:>8}{used:>10,}{changed:>9}")
 
     by_day = {}
@@ -341,7 +331,118 @@ def stats(days):
         print(f"  {when}  {r.get('kind', ''):<7} {text:<48} {arrow} {r.get('name') or '(none)':<14} {cost}")
 
 
+def load_log():
+    """Every naming recorded, oldest first."""
+    try:
+        with open(LOG_PATH) as handle:
+            return [json.loads(line) for line in handle if line.strip()]
+    except Exception:
+        return []
+
+
+def summarize(rows, days):
+    """Namings, model calls, tokens and renames over the last `days`."""
+    picked = [r for r in rows if r.get("at", 0) >= time.time() - days * 86400]
+    return (
+        len(picked),
+        sum(1 for r in picked if r.get("kind") != "ssh"),
+        sum((r.get("tokens_in") or 0) + (r.get("tokens_out") or 0) for r in picked),
+        sum(1 for r in picked if r.get("changed")),
+    )
+
+
+def watch(days):
+    """A live view of the log, redrawn as namings arrive."""
+    import curses
+
+    def draw(screen, rows, window):
+        height, width = screen.getmaxyx()
+        screen.erase()
+
+        def put(y, x, text, attr=0):
+            if 0 <= y < height and x < width:
+                screen.addnstr(y, x, text, max(0, width - x - 1), attr)
+
+        named, calls, used, changed = summarize(rows, window)
+        label = {1: "today", 7: "last 7 days", 30: "last 30 days"}[window]
+        put(0, 0, " herdr-name-tab ", curses.A_REVERSE | curses.A_BOLD)
+        put(0, 16, f" {label}: {named} namings · {calls} calls · {used:,} tokens · {changed} renames")
+        put(1, 0, " [1] today  [7] week  [3] month  [q] quit", curses.A_DIM)
+
+        by_day = {}
+        for row in rows:
+            if row.get("at", 0) < time.time() - window * 86400:
+                continue
+            day = time.strftime("%m-%d", time.localtime(row["at"]))
+            count, tokens = by_day.get(day, (0, 0))
+            by_day[day] = (count + 1, tokens + (row.get("tokens_in") or 0) + (row.get("tokens_out") or 0))
+
+        line = 3
+        put(line, 1, "by day", curses.A_BOLD)
+        line += 1
+        widest = max([c for c, _ in by_day.values()] or [1])
+        for day in sorted(by_day)[-8:]:
+            count, tokens = by_day[day]
+            bar = "\u2588" * max(1, round(18 * count / widest))
+            put(line, 2, f"{day}  {bar:<18} {count:>4}  {tokens:>7,} tok")
+            line += 1
+
+        line += 1
+        put(line, 1, "recent", curses.A_BOLD)
+        line += 1
+        room = height - line - 2
+        for row in rows[-room:] if room > 0 else []:
+            # the footer owns the last line, whatever the arithmetic above says
+            if line >= height - 2:
+                break
+            when = time.strftime("%H:%M", time.localtime(row.get("at", 0)))
+            cost = "free" if not row.get("tokens_in") else f"{(row.get('tokens_in') or 0) + (row.get('tokens_out') or 0)} tok"
+            text = (row.get("input") or "").replace("\n", " ")
+            wide = max(18, width - 46)
+            # composed rather than counted, so the two columns cannot overlap
+            left = f"{when} {row.get('kind', ''):<7} {text[:wide]:<{wide}}  "
+            put(line, 2, left)
+            put(line, 2 + len(left), f"{row.get('name') or '-':<14} {cost}",
+                curses.A_BOLD if row.get("changed") else curses.A_DIM)
+            line += 1
+
+        put(height - 1, 0, f" {LOG_PATH} ", curses.A_DIM)
+        screen.refresh()
+
+    def loop(screen):
+        curses.curs_set(0)
+        screen.timeout(500)
+        window, stamp, rows = days if days in (1, 7, 30) else 30, None, []
+        while True:
+            try:
+                now = os.path.getmtime(LOG_PATH)
+            except OSError:
+                now = 0
+            if now != stamp:
+                stamp, rows = now, load_log()
+            draw(screen, rows, window)
+
+            key = screen.getch()
+            if key in (ord("q"), 27):
+                return
+            if key == ord("1"):
+                window = 1
+            elif key == ord("7"):
+                window = 7
+            elif key == ord("3"):
+                window = 30
+            elif key == curses.KEY_RESIZE:
+                stamp = None
+
+    curses.wrapper(loop)
+
+
 def main():
+    if "--watch" in sys.argv:
+        rest = [a for a in sys.argv[sys.argv.index("--watch") + 1:] if a.isdigit()]
+        watch(int(rest[0]) if rest else 30)
+        return
+
     if "--stats" in sys.argv:
         rest = [a for a in sys.argv[sys.argv.index("--stats") + 1:] if a.isdigit()]
         stats(int(rest[0]) if rest else 30)
