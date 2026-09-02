@@ -14,6 +14,9 @@ MAX_LEN = 16
 # a name comes out of the opening words; the rest is only tokens
 MAX_INPUT = 240
 STATE_DIR = os.path.expanduser("~/.local/state/herdr-tab-names")
+LOG_PATH = os.path.join(STATE_DIR, "calls.jsonl")
+# the log is append-only, so it is halved rather than allowed to grow forever
+LOG_MAX_BYTES = 2 << 20
 # rename a tab to this to clear its name and have it named again
 RESET_LABEL = "-"
 # clearing the screen is how a shell tab says the work changed
@@ -69,7 +72,7 @@ def setting(key, default=None):
 
 
 def ask_model(query):
-    """Ask the configured model to name the tab, or "" when it cannot be reached."""
+    """Ask the configured model to name the tab. Returns the answer and its cost."""
     url = setting("api_url")
 
     if not url:
@@ -79,9 +82,9 @@ def ask_model(query):
             return subprocess.run(
                 ["claude", "-p", "--model", setting("model", "haiku")],
                 input=query, capture_output=True, text=True, timeout=60,
-            ).stdout
+            ).stdout, {}
         except Exception:
-            return ""
+            return "", {}
 
     if not url.rstrip("/").endswith("/chat/completions"):
         url = url.rstrip("/") + "/chat/completions"
@@ -101,9 +104,10 @@ def ask_model(query):
     try:
         request = urllib.request.Request(url, data=body, headers=headers, method="POST")
         with urllib.request.urlopen(request, timeout=15) as response:
-            return json.load(response)["choices"][0]["message"]["content"]
+            answer = json.load(response)
+        return answer["choices"][0]["message"]["content"], answer.get("usage") or {}
     except Exception:
-        return ""
+        return "", {}
 
 
 # ssh options that take a value, so the token after them is never the host
@@ -198,6 +202,23 @@ def head_of(command):
     return re.split(r"[\s;|&]+", command.strip())[0].rsplit("/", 1)[-1]
 
 
+def record(entry):
+    """Append one line about a naming to the log, trimming it when it grows."""
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        if os.path.exists(LOG_PATH) and os.path.getsize(LOG_PATH) > LOG_MAX_BYTES:
+            with open(LOG_PATH) as handle:
+                lines = handle.readlines()
+            with open(LOG_PATH, "w") as handle:
+                handle.writelines(lines[len(lines) // 2:])
+
+        entry["at"] = time.time()
+        with open(LOG_PATH, "a") as handle:
+            handle.write(json.dumps(entry) + "\n")
+    except Exception:
+        pass
+
+
 def latest_input():
     """The text to name from: a hook's JSON prompt on stdin, or the argv command."""
     if len(sys.argv) > 1:
@@ -272,7 +293,60 @@ def reset(path, tab):
         json.dump({"name": label, "fresh": True}, handle)
 
 
+def stats(days):
+    """Print what the namer has called, cost and produced over the last `days`."""
+    try:
+        with open(LOG_PATH) as handle:
+            rows = [json.loads(line) for line in handle if line.strip()]
+    except Exception:
+        rows = []
+
+    cutoff = time.time() - days * 86400
+    rows = [r for r in rows if r.get("at", 0) >= cutoff]
+    if not rows:
+        print(f"no namings in the last {days} days ({LOG_PATH})")
+        return
+
+    def totals(since):
+        picked = [r for r in rows if r.get("at", 0) >= time.time() - since * 86400]
+        used = sum((r.get("tokens_in") or 0) + (r.get("tokens_out") or 0) for r in picked)
+        # an ssh name is parsed, not asked for, so it is a naming but not a call
+        asked = sum(1 for r in picked if r.get("kind") != "ssh")
+        return len(picked), asked, used, sum(1 for r in picked if r.get("changed"))
+
+    print(f"{'period':<14}{'namings':>9}{'calls':>8}{'tokens':>10}{'renames':>9}")
+    for label, since in (("today", 1), ("last 7 days", 7), ("last 30 days", 30)):
+        if since <= days:
+            n, calls, used, changed = totals(since)
+            print(f"{label:<14}{n:>9}{calls:>8}{used:>10,}{changed:>9}")
+
+    by_day = {}
+    for r in rows:
+        day = time.strftime("%Y-%m-%d", time.localtime(r.get("at", 0)))
+        n, used = by_day.get(day, (0, 0))
+        by_day[day] = (n + 1, used + (r.get("tokens_in") or 0) + (r.get("tokens_out") or 0))
+
+    print("\nby day")
+    widest = max(n for n, _ in by_day.values())
+    for day in sorted(by_day)[-14:]:
+        n, used = by_day[day]
+        print(f"  {day}  {'#' * max(1, round(20 * n / widest)):<20} {n:>4}  {used:>8,} tok")
+
+    print("\nrecent names")
+    for r in rows[-20:]:
+        when = time.strftime("%m-%d %H:%M", time.localtime(r.get("at", 0)))
+        cost = "free" if not r.get("tokens_in") else f"{(r.get('tokens_in') or 0) + (r.get('tokens_out') or 0)} tok"
+        arrow = "->" if r.get("changed") else "  "
+        text = (r.get("input") or "").replace("\n", " ")[:46]
+        print(f"  {when}  {r.get('kind', ''):<7} {text:<48} {arrow} {r.get('name') or '(none)':<14} {cost}")
+
+
 def main():
+    if "--stats" in sys.argv:
+        rest = [a for a in sys.argv[sys.argv.index("--stats") + 1:] if a.isdigit()]
+        stats(int(rest[0]) if rest else 30)
+        return
+
     tab = os.environ.get("HERDR_TAB_ID")
     if os.environ.get("HERDR_ENV") != "1" or not tab or not os.environ.get("HERDR_SOCKET_PATH"):
         return
@@ -346,6 +420,9 @@ def main():
         # every machine and identifies none of them.
         direct = slug(ssh_label(" ".join(sys.argv[1:])))
         if direct:
+            record({"tab": tab, "kind": "ssh", "input": text[:MAX_INPUT], "was": state.get("name"),
+                    "name": direct, "changed": True, "model": "", "ms": 0,
+                    "tokens_in": 0, "tokens_out": 0})
             state.update(anchor=text, asked_at=time.time(), seen=0, kept=0, name=direct)
             state.pop("fresh", None)
             subprocess.run(["herdr", "tab", "rename", tab, direct], capture_output=True, timeout=5)
@@ -371,7 +448,15 @@ def main():
 
     anchor = state.get("anchor") or text[:MAX_INPUT]
     text = text[:MAX_INPUT]
-    name = slug(ask_model(f"{PROMPT}\n\nANCHOR: {anchor}\nNAME: {ours or '(none)'}\nLATEST: {text}\n"))
+    started = time.time()
+    answer, usage = ask_model(f"{PROMPT}\n\nANCHOR: {anchor}\nNAME: {ours or '(none)'}\nLATEST: {text}\n")
+    name = slug(answer)
+    record({
+        "tab": tab, "kind": "prompt" if len(sys.argv) == 1 else "command",
+        "input": text, "was": ours, "name": name, "changed": bool(name) and name != ours,
+        "model": setting("model", ""), "ms": int((time.time() - started) * 1000),
+        "tokens_in": usage.get("prompt_tokens"), "tokens_out": usage.get("completion_tokens"),
+    })
     if not name:
         return
 

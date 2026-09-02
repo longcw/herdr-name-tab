@@ -156,6 +156,29 @@ Calls are rarer than the triggers suggest:
 | A tab you named yourself | none |
 | `cd`, `ls`, `clear`, or launching an agent | none |
 
+## What it has been doing
+
+```
+herdr-name-tab --stats        # last 30 days
+herdr-name-tab --stats 7      # last 7
+```
+
+```
+period          namings   calls    tokens  renames
+today                 3       2       752        3
+last 7 days           3       2       752        3
+
+by day
+  2026-09-02  ####################    3       752 tok
+
+recent names
+  09-02 20:30  prompt  the payment webhook keeps retrying and dupl   -> webhook        375 tok
+  09-02 20:30  ssh     ssh longc@192.168.100.121                     -> ssh-121        free
+  09-02 20:30  prompt  port the oauth device flow to the js sdk      -> oauth-device   377 tok
+```
+
+*namings* counts every time a tab was named; *calls* counts the ones that asked a model, so an ssh name shows as a naming and not a call. Every naming is appended to `~/.local/state/herdr-tab-names/calls.jsonl`, which is halved when it passes 2 MB rather than growing without limit. The inputs recorded are the same capped 240 characters that were sent.
+
 ## Naming a tab yourself
 
 Rename a tab by hand and the script never touches it again — the name is yours.
