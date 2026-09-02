@@ -10,6 +10,8 @@ import time
 import urllib.request
 
 MAX_LEN = 16
+# a name comes out of the opening words; the rest is only tokens
+MAX_INPUT = 240
 STATE_DIR = os.path.expanduser("~/.local/state/herdr-tab-names")
 # rename a tab to this to hand it back after naming it yourself
 RESET_LABEL = "-auto"
@@ -179,7 +181,8 @@ def main():
     if ours and time.time() - state.get("asked_at", 0) < float(setting("throttle", 60)):
         return
 
-    anchor = state.get("anchor") or text
+    anchor = state.get("anchor") or text[:MAX_INPUT]
+    text = text[:MAX_INPUT]
     name = slug(ask_model(f"{PROMPT}\n\nANCHOR: {anchor}\nNAME: {ours or '(none)'}\nLATEST: {text}\n"))
     if not name:
         return

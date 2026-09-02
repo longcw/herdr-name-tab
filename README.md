@@ -89,6 +89,19 @@ Every key can also be set as `HERDR_NAME_TAB_API_URL`, `HERDR_NAME_TAB_MODEL`, a
 
 A tab named from a **command** is named once and keeps that name: a shell holds many unrelated commands, and re-reading each one would rename the tab all day. Only a tab named from an agent's prompts is re-evaluated, because there the whole session is one task.
 
+## What it costs
+
+One call is about 400 tokens in and 4 out. Inputs are capped at 240 characters each, so pasting a stack trace into a prompt cannot turn a tab name into a 4,000-token request.
+
+Calls are rarer than the triggers suggest:
+
+| | Calls |
+| --- | --- |
+| An agent tab, however many prompts | at most one per `throttle` (60s default) |
+| A shell tab | exactly one, ever |
+| A tab you named yourself | none |
+| `cd`, `ls`, `clear`, or launching an agent | none |
+
 ## Naming a tab yourself
 
 Rename a tab by hand and the script never touches it again — the name is yours.
