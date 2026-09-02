@@ -11,6 +11,9 @@
 
   "reset_label": "-",
 
+  "_clear_label_note": "What a tab is called after a clear. \"auto\" uses the pane's agent (claude, omp, hermes) or its shell (fish, zsh); a literal string is used as-is.",
+  "clear_label": "auto",
+
   "_ignore_note": "Commands that never name a tab. Setting this replaces the built-in list. clear and reset are not ignored: they forget the tab's topic.",
   "ignore": ["cd", "z", "pushd", "popd", "ls", "ll", "la", "lsd", "eza", "exa", "tree", "pwd",
              "exit", "logout",

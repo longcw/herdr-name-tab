@@ -100,7 +100,7 @@ pace_max: 32   ceiling once the name has settled
 
 ## Starting different work in the same tab
 
-Two things forget a tab's topic, so the next input names it afresh:
+Two things forget a tab's topic, so the next input names it afresh. The tab is set back to what the pane is actually running — its agent (`claude`, `omp`, `hermes`) or its shell (`fish`, `zsh`) — because the old name now describes work that is over:
 
 - **`clear`** (or `reset`) in a shell — the natural way to say a tab has moved on, and the only way to rename a shell tab, which is otherwise named once and left alone.
 - **`/clear`** in Claude Code, through a `SessionStart` hook:
@@ -116,6 +116,8 @@ Two things forget a tab's topic, so the next input names it afresh:
 ```
 
 Only `clear` and `startup` reset. A compacted or resumed session is the same work and keeps its name, and a tab you named yourself survives both kinds of clear — `-` is the only thing that hands it over.
+
+The idle label is `clear_label`, `"auto"` by default; set a literal string to override it. A tab showing one is treated as unnamed however it is labelled, so the next input names it from scratch rather than being asked to keep `fish`. Renaming it yourself in the meantime still makes it yours.
 
 ## Why this is not a Herdr plugin
 

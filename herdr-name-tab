@@ -30,6 +30,8 @@ IGNORED = {
 }
 # an agent names its tab from its prompts, not from the command that launched it
 AGENTS = {"claude", "codex", "copilot", "droid", "opencode", "cursor", "qwen", "grok", "kimi"}
+# what a pane is running when it is running nothing in particular
+SHELLS = {"bash", "zsh", "fish", "sh", "dash", "ksh", "tcsh", "csh", "nu", "xonsh", "elvish"}
 
 PROMPT = """You name terminal tabs. Reply with the tab name only, nothing else.
 
@@ -100,6 +102,39 @@ def ask_model(query):
         return ""
 
 
+def idle_label():
+    """What a tab is called when it holds no work: its agent, else its shell."""
+    choice = str(setting("clear_label", "auto"))
+    if choice != "auto":
+        return choice
+
+    pane = os.environ.get("HERDR_PANE_ID")
+    try:
+        panes = json.loads(subprocess.run(
+            ["herdr", "api", "snapshot"], capture_output=True, text=True, timeout=5
+        ).stdout)["result"]["snapshot"]["panes"]
+        found = next((p for p in panes if p["pane_id"] == pane), {})
+    except Exception:
+        found = {}
+
+    agent = found.get("display_agent") or found.get("agent")
+    if agent:
+        return str(agent)
+
+    # the shell the pane is actually running, which $SHELL only guesses at:
+    # it names the login shell, not the one in front of you
+    try:
+        info = json.loads(subprocess.run(
+            ["herdr", "pane", "process-info", "--pane", pane],
+            capture_output=True, text=True, timeout=5,
+        ).stdout)["result"]["process_info"]["foreground_processes"]
+        shell = next((p["name"] for p in info if p.get("name") in SHELLS), "")
+    except Exception:
+        shell = ""
+
+    return shell or os.path.basename(os.environ.get("SHELL", "")) or RESET_LABEL
+
+
 def head_of(command):
     """The program a command line runs, without its path."""
     return re.split(r"[\s;|&]+", command.strip())[0].rsplit("/", 1)[-1]
@@ -143,8 +178,8 @@ def slug(raw):
     return name.strip("-")
 
 
-def reset(path):
-    """Forget the tab's topic so the next input names it afresh."""
+def reset(path, tab):
+    """Forget the tab's topic and label so the next input names it afresh."""
     # a shell hook leaves stdin on the terminal, where there is nothing to read
     try:
         source = "" if sys.stdin.isatty() else str(json.load(sys.stdin).get("source") or "")
@@ -165,9 +200,18 @@ def reset(path):
     if state.get("released"):
         return
 
+    # the old name now describes work that is over, so the tab is set back to
+    # the label that asks to be named. Remembering it is what lets a rename
+    # you make between here and the next input still count as yours.
+    label = idle_label()
+    subprocess.run(["herdr", "tab", "rename", tab, label], capture_output=True, timeout=5)
+
+    # "fresh" is what stops `fish` or `claude` being offered to the model as a
+    # name worth keeping, while still catching a rename you make before the
+    # next input arrives
     os.makedirs(STATE_DIR, exist_ok=True)
     with open(path, "w") as handle:
-        json.dump({}, handle)
+        json.dump({"name": label, "fresh": True}, handle)
 
 
 def main():
@@ -178,11 +222,11 @@ def main():
     path = os.path.join(STATE_DIR, re.sub(r"[^A-Za-z0-9]", "_", tab) + ".json")
 
     if "--reset" in sys.argv:
-        reset(path)
+        reset(path, tab)
         return
 
     if len(sys.argv) > 1 and head_of(" ".join(sys.argv[1:])) in RESET_COMMANDS:
-        reset(path)
+        reset(path, tab)
         return
 
     text = latest_input()
@@ -215,6 +259,11 @@ def main():
         return
 
     ours = state.get("name")
+
+    # a tab holding only its shell or agent name is unnamed, whatever the
+    # label says — but a label that differs from it is still someone's rename
+    fresh = state.get("fresh")
+
     if ours and label != ours:
         state["released"] = True
         os.makedirs(STATE_DIR, exist_ok=True)
@@ -224,6 +273,9 @@ def main():
 
     # a shell holds many unrelated commands, so every one of them would read as
     # a change of subject: a tab named from a command keeps that name
+    if fresh:
+        ours = None
+
     if ours and len(sys.argv) > 1:
         return
 
@@ -247,6 +299,7 @@ def main():
         return
 
     state.update(anchor=anchor, asked_at=time.time(), seen=0, kept=kept + 1 if name == ours else 0)
+    state.pop("fresh", None)
     if name != ours:
         subprocess.run(["herdr", "tab", "rename", tab, name], capture_output=True, timeout=5)
         state["name"] = name
