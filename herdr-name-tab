@@ -13,12 +13,19 @@ MAX_LEN = 16
 # a name comes out of the opening words; the rest is only tokens
 MAX_INPUT = 240
 STATE_DIR = os.path.expanduser("~/.local/state/herdr-tab-names")
-# rename a tab to this to hand it back after naming it yourself
-RESET_LABEL = "-auto"
+# rename a tab to this to clear its name and have it named again
+RESET_LABEL = "-"
 CONFIG_PATH = os.path.expanduser("~/.config/herdr-name-tab/config.json")
 
-# commands that say nothing about what a tab is for
-IGNORED = {"cd", "ls", "ll", "clear", "exit", "pwd", "z", "cat", "which", "echo"}
+# commands that say nothing about what a tab is for: moving around, looking
+# around, and running the shell itself. Replaceable through "ignore".
+IGNORED = {
+    "cd", "z", "pushd", "popd", "ls", "ll", "la", "lsd", "eza", "exa", "tree", "pwd",
+    "clear", "reset", "exit", "logout",
+    "echo", "which", "type", "whoami", "date", "uptime", "man", "history",
+    "env", "printenv", "export", "source", "alias", "unalias",
+    "cat", "bat", "less", "more",
+}
 # an agent names its tab from its prompts, not from the command that launched it
 AGENTS = {"claude", "codex", "copilot", "droid", "opencode", "cursor", "qwen", "grok", "kimi"}
 
@@ -96,7 +103,7 @@ def latest_input():
     if len(sys.argv) > 1:
         command = " ".join(sys.argv[1:]).strip()
         head = re.split(r"[\s;|&]+", command)[0].rsplit("/", 1)[-1]
-        if head in IGNORED or head in AGENTS:
+        if head in set(setting("ignore", IGNORED)) or head in AGENTS:
             return ""
         return command
 
@@ -130,16 +137,47 @@ def slug(raw):
     return name.strip("-")
 
 
+def reset(path):
+    """Forget the tab's topic so the next input names it afresh."""
+    try:
+        source = str(json.load(sys.stdin).get("source") or "")
+    except Exception:
+        source = ""
+
+    # a compacted or resumed session is the same work; a cleared one is not
+    if source not in ("clear", "startup", ""):
+        return
+
+    try:
+        with open(path) as handle:
+            state = json.load(handle)
+    except Exception:
+        state = {}
+
+    # a name the user chose stays theirs across a clear
+    if state.get("released"):
+        return
+
+    os.makedirs(STATE_DIR, exist_ok=True)
+    with open(path, "w") as handle:
+        json.dump({}, handle)
+
+
 def main():
     tab = os.environ.get("HERDR_TAB_ID")
     if os.environ.get("HERDR_ENV") != "1" or not tab or not os.environ.get("HERDR_SOCKET_PATH"):
+        return
+
+    path = os.path.join(STATE_DIR, re.sub(r"[^A-Za-z0-9]", "_", tab) + ".json")
+
+    if "--reset" in sys.argv:
+        reset(path)
         return
 
     text = latest_input()
     if not text:
         return
 
-    path = os.path.join(STATE_DIR, re.sub(r"[^A-Za-z0-9]", "_", tab) + ".json")
     try:
         with open(path) as handle:
             state = json.load(handle)
@@ -158,7 +196,7 @@ def main():
         return
 
     # the sentinel is how a tab you named yourself is handed back
-    if label.strip().lower() == RESET_LABEL:
+    if label.strip().lower() == setting("reset_label", RESET_LABEL):
         state = {}
 
     # a tab renamed by anyone but us is theirs, and stays theirs
@@ -178,7 +216,11 @@ def main():
     if ours and len(sys.argv) > 1:
         return
 
-    if ours and time.time() - state.get("asked_at", 0) < float(setting("throttle", 60)):
+    # a name that keeps surviving is unlikely to need changing, so each
+    # unchanged answer doubles the wait before the next one
+    kept = state.get("kept", 0)
+    pace = min(float(setting("throttle", 30)) * (2 ** kept), float(setting("throttle_max", 900)))
+    if ours and time.time() - state.get("asked_at", 0) < pace:
         return
 
     anchor = state.get("anchor") or text[:MAX_INPUT]
@@ -187,7 +229,7 @@ def main():
     if not name:
         return
 
-    state.update(anchor=anchor, asked_at=time.time())
+    state.update(anchor=anchor, asked_at=time.time(), kept=kept + 1 if name == ours else 0)
     if name != ours:
         subprocess.run(["herdr", "tab", "rename", tab, name], capture_output=True, timeout=5)
         state["name"] = name

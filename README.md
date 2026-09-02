@@ -85,7 +85,36 @@ A local runtime works and costs nothing per call — the task is small enough fo
 { "api_url": "http://127.0.0.1:11434/v1", "model": "qwen2.5:3b" }
 ```
 
-Every key can also be set as `HERDR_NAME_TAB_API_URL`, `HERDR_NAME_TAB_MODEL`, and so on. `throttle` is the least time between two evaluations of one tab, in seconds.
+Every key can also be set as `HERDR_NAME_TAB_API_URL`, `HERDR_NAME_TAB_MODEL`, and so on.
+
+## Pacing
+
+A tab with no name is named at once. After that the wait between checks doubles with every answer that leaves the name alone — 30s, 1m, 2m, 4m, up to `throttle_max`:
+
+```
+throttle: 30       seconds before the second check
+throttle_max: 900  ceiling once the name has settled
+```
+
+Early in a session the topic is still moving, or a word was misheard, and checks are cheap. An hour in, the name almost never changes, and the calls all but stop. A name that *does* change resets the pace.
+
+`/clear` starts different work in the same tab, so it resets the topic. Add to `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "~/.local/bin/herdr-name-tab --reset", "timeout": 5 }] }
+    ]
+  }
+}
+```
+
+Only `clear` and `startup` reset. A compacted or resumed session is the same work and keeps its name, and a tab you named yourself survives a clear.
+
+## Why this is not a Herdr plugin
+
+Herdr publishes `pane_created`, `pane_updated`, `pane_agent_detected` and friends, but nothing carrying a command line as it is typed and nothing carrying an agent's prompt. A plugin would have to poll `pane.process_info`, which sees `nvim` rather than `nvim src/auth.ts` and misses short commands entirely. The two hooks here see strictly more, and there is no daemon for Herdr to supervise.
 
 A tab named from a **command** is named once and keeps that name: a shell holds many unrelated commands, and re-reading each one would rename the tab all day. Only a tab named from an agent's prompts is re-evaluated, because there the whole session is one task.
 
@@ -97,7 +126,8 @@ Calls are rarer than the triggers suggest:
 
 | | Calls |
 | --- | --- |
-| An agent tab, however many prompts | at most one per `throttle` (60s default) |
+| An agent tab, first prompt | immediately — an unnamed tab never waits |
+| An agent tab, after that | one per `throttle`, which doubles each time the name survives |
 | A shell tab | exactly one, ever |
 | A tab you named yourself | none |
 | `cd`, `ls`, `clear`, or launching an agent | none |
@@ -106,7 +136,7 @@ Calls are rarer than the triggers suggest:
 
 Rename a tab by hand and the script never touches it again — the name is yours.
 
-To hand a tab back, rename it to `-auto`. The next prompt or command names it afresh.
+To hand a tab back, rename it to `-` (configurable as `reset_label`). The next prompt or command names it afresh.
 
 The anchor is the first input, so a word misheard by voice dictation would otherwise name the tab wrongly for good. When a later input shows the anchor named the wrong thing, the name is corrected; a merely *better* name for the same work is not a reason to rename.
 

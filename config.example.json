@@ -1,8 +1,18 @@
 {
-  "_comment": "Copy to config.json. Any OpenAI-compatible endpoint. Without api_url the Claude CLI is used, which costs about 4s per call instead of under 1s.",
+  "_comment": "Copy to config.json. Any OpenAI-compatible endpoint. Without api_url the Claude CLI is used, which is slower and cannot be pinned to temperature 0.",
 
   "api_url": "https://api.openai.com/v1",
   "api_key_env": "OPENAI_API_KEY",
   "model": "gpt-4o-mini",
-  "throttle": 60
+
+  "throttle": 30,
+  "throttle_max": 900,
+  "reset_label": "-",
+
+  "_ignore_note": "Commands that never name a tab. Setting this replaces the built-in list.",
+  "ignore": ["cd", "z", "pushd", "popd", "ls", "ll", "la", "lsd", "eza", "exa", "tree", "pwd",
+             "clear", "reset", "exit", "logout",
+             "echo", "which", "type", "whoami", "date", "uptime", "man", "history",
+             "env", "printenv", "export", "source", "alias", "unalias",
+             "cat", "bat", "less", "more"]
 }
