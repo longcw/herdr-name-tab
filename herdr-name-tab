@@ -517,8 +517,6 @@ def main():
             json.dump(state, handle)
         return
 
-    # a shell holds many unrelated commands, so every one of them would read as
-    # a change of subject: a tab named from a command keeps that name
     if fresh:
         ours = None
 
@@ -544,6 +542,8 @@ def main():
             with open(path, "w") as handle:
                 json.dump(state, handle)
             return
+    # a shell holds many unrelated commands, so every one of them would read as
+    # a change of subject: a tab named from a command keeps that name
     elif ours and len(sys.argv) > 1:
         return
 
@@ -585,10 +585,11 @@ def main():
         json.dump(state, handle)
 
 
-try:
-    main()
-except KeyboardInterrupt:
-    sys.exit(130)
-except BrokenPipeError:
-    # `--stats | head` closes the pipe early, which is not a failure
-    os._exit(0)
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(130)
+    except BrokenPipeError:
+        # `--stats | head` closes the pipe early, which is not a failure
+        os._exit(0)

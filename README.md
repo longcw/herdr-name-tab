@@ -3,7 +3,7 @@
 Names every [Herdr](https://herdr.dev) tab with one word, taken from the first thing you typed in it.
 
 ```
-6921         a Claude Code session porting an issue
+prod-01      a shell logged into a machine
 proxy-proto  a session designing a protocol
 syslog       a shell tailing a log
 7083         work on an issue, named by its number
@@ -106,7 +106,7 @@ An ssh command is named by parsing, not by the model: the host is the answer and
 
 ## Pacing
 
-A tab with no name is named at once. After that the number of inputs skipped doubles with every answer that leaves the name alone, so checks fall on turns 1, 3, 7, 15, 31 — five calls across forty prompts. A name that *does* change resets the pace.
+A tab with no name is named at once. After that the number of inputs skipped doubles with every answer that leaves the name alone, so checks fall on turns 1, 2, 4, 8, 16, 32, and then every 32 for as long as the tab lives — six calls across forty prompts, nine across a hundred. It never stops checking; it just checks rarely. A name that *does* change resets the pace to every turn.
 
 ```
 pace: 1        inputs skipped after the first surviving answer
@@ -151,8 +151,8 @@ Calls are rarer than the triggers suggest:
 | | Calls |
 | --- | --- |
 | An agent tab, first prompt | immediately — an unnamed tab never waits |
-| An agent tab, after that | on turns 1, 3, 7, 15, 31… — 5 calls across 40 prompts |
-| A shell tab | exactly one, ever |
+| An agent tab, after that | on turns 1, 2, 4, 8, 16, 32, then every 32 — 6 calls across 40 prompts |
+| A shell tab | one, plus any `ssh`-style command |
 | A tab you named yourself | none |
 | `cd`, `ls`, `clear`, or launching an agent | none |
 

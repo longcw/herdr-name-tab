@@ -4,9 +4,10 @@
 import os
 import sys
 
+# a name other than __main__ is what keeps the script from running itself
 src = open(os.path.join(os.path.dirname(__file__), "herdr-name-tab")).read()
-ns = {}
-exec(compile(src.rsplit("\nmain()", 1)[0], "herdr-name-tab", "exec"), ns)
+ns = {"__name__": "herdr_name_tab"}
+exec(compile(src, "herdr-name-tab", "exec"), ns)
 
 CASES = [
     # the user is the same on every machine, so it never names one
