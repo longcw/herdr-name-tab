@@ -91,7 +91,11 @@ A tab named from a **command** is named once and keeps that name: a shell holds 
 
 ## Naming a tab yourself
 
-Rename a tab by hand and the script never touches it again — the name is yours. It records this in `~/.local/state/herdr-tab-names/`; delete a tab's file there to hand it back.
+Rename a tab by hand and the script never touches it again — the name is yours.
+
+To hand a tab back, rename it to `-auto`. The next prompt or command names it afresh.
+
+The anchor is the first input, so a word misheard by voice dictation would otherwise name the tab wrongly for good. When a later input shows the anchor named the wrong thing, the name is corrected; a merely *better* name for the same work is not a reason to rename.
 
 ## Relationship to herdr-auto-title
 

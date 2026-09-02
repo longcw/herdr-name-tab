@@ -11,6 +11,8 @@ import urllib.request
 
 MAX_LEN = 16
 STATE_DIR = os.path.expanduser("~/.local/state/herdr-tab-names")
+# rename a tab to this to hand it back after naming it yourself
+RESET_LABEL = "-auto"
 CONFIG_PATH = os.path.expanduser("~/.config/herdr-name-tab/config.json")
 
 # commands that say nothing about what a tab is for
@@ -34,6 +36,7 @@ NAME is what the tab is called now.
 Your answer is NAME, copied exactly, unless LATEST turns the tab to work unrelated to ANCHOR.
 Changing tools, changing your mind, correcting course or digging into a detail is the same work, and the same name.
 A better name for the same work is not a reason to change it. Only an unrelated subject is.
+ANCHOR can be garbled - it is often dictated, so it may have misheard a word. When LATEST shows ANCHOR named the wrong thing, correct NAME to the work LATEST reveals.
 When NAME is (none), name the work in ANCHOR."""
 
 try:
@@ -141,10 +144,6 @@ def main():
     except Exception:
         state = {}
 
-    # a tab renamed by anyone but us is theirs, and stays theirs
-    if state.get("released"):
-        return
-
     try:
         listed = json.loads(subprocess.run(
             ["herdr", "tab", "list"], capture_output=True, text=True, timeout=5
@@ -154,6 +153,14 @@ def main():
 
     label = next((t["label"] for t in listed if t["tab_id"] == tab), None)
     if label is None:
+        return
+
+    # the sentinel is how a tab you named yourself is handed back
+    if label.strip().lower() == RESET_LABEL:
+        state = {}
+
+    # a tab renamed by anyone but us is theirs, and stays theirs
+    if state.get("released"):
         return
 
     ours = state.get("name")
