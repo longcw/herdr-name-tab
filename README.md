@@ -89,16 +89,21 @@ Every key can also be set as `HERDR_NAME_TAB_API_URL`, `HERDR_NAME_TAB_MODEL`, a
 
 ## Pacing
 
-A tab with no name is named at once. After that the wait between checks doubles with every answer that leaves the name alone — 30s, 1m, 2m, 4m, up to `throttle_max`:
+A tab with no name is named at once. After that the number of inputs skipped doubles with every answer that leaves the name alone, so checks fall on turns 1, 3, 7, 15, 31 — five calls across forty prompts. A name that *does* change resets the pace.
 
 ```
-throttle: 30       seconds before the second check
-throttle_max: 900  ceiling once the name has settled
+pace: 1        inputs skipped after the first surviving answer
+pace_max: 32   ceiling once the name has settled
 ```
 
-Early in a session the topic is still moving, or a word was misheard, and checks are cheap. An hour in, the name almost never changes, and the calls all but stop. A name that *does* change resets the pace.
+**Pacing counts inputs, never seconds.** An hour away from the keyboard changes nothing about what a tab is for, and a wall clock would spend a call to rediscover that on your first prompt back.
 
-`/clear` starts different work in the same tab, so it resets the topic. Add to `~/.claude/settings.json`:
+## Starting different work in the same tab
+
+Two things forget a tab's topic, so the next input names it afresh:
+
+- **`clear`** (or `reset`) in a shell — the natural way to say a tab has moved on, and the only way to rename a shell tab, which is otherwise named once and left alone.
+- **`/clear`** in Claude Code, through a `SessionStart` hook:
 
 ```json
 {
@@ -110,7 +115,7 @@ Early in a session the topic is still moving, or a word was misheard, and checks
 }
 ```
 
-Only `clear` and `startup` reset. A compacted or resumed session is the same work and keeps its name, and a tab you named yourself survives a clear.
+Only `clear` and `startup` reset. A compacted or resumed session is the same work and keeps its name, and a tab you named yourself survives both kinds of clear — `-` is the only thing that hands it over.
 
 ## Why this is not a Herdr plugin
 
@@ -127,7 +132,7 @@ Calls are rarer than the triggers suggest:
 | | Calls |
 | --- | --- |
 | An agent tab, first prompt | immediately — an unnamed tab never waits |
-| An agent tab, after that | one per `throttle`, which doubles each time the name survives |
+| An agent tab, after that | on turns 1, 3, 7, 15, 31… — 5 calls across 40 prompts |
 | A shell tab | exactly one, ever |
 | A tab you named yourself | none |
 | `cd`, `ls`, `clear`, or launching an agent | none |

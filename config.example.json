@@ -5,13 +5,15 @@
   "api_key_env": "OPENAI_API_KEY",
   "model": "gpt-4o-mini",
 
-  "throttle": 30,
-  "throttle_max": 900,
+  "_pace_note": "Pacing counts inputs, never seconds. pace is how many to skip after the first surviving answer; it doubles from there, up to pace_max.",
+  "pace": 1,
+  "pace_max": 32,
+
   "reset_label": "-",
 
-  "_ignore_note": "Commands that never name a tab. Setting this replaces the built-in list.",
+  "_ignore_note": "Commands that never name a tab. Setting this replaces the built-in list. clear and reset are not ignored: they forget the tab's topic.",
   "ignore": ["cd", "z", "pushd", "popd", "ls", "ll", "la", "lsd", "eza", "exa", "tree", "pwd",
-             "clear", "reset", "exit", "logout",
+             "exit", "logout",
              "echo", "which", "type", "whoami", "date", "uptime", "man", "history",
              "env", "printenv", "export", "source", "alias", "unalias",
              "cat", "bat", "less", "more"]

@@ -15,6 +15,8 @@ MAX_INPUT = 240
 STATE_DIR = os.path.expanduser("~/.local/state/herdr-tab-names")
 # rename a tab to this to clear its name and have it named again
 RESET_LABEL = "-"
+# clearing the screen is how a shell tab says the work changed
+RESET_COMMANDS = {"clear", "reset"}
 CONFIG_PATH = os.path.expanduser("~/.config/herdr-name-tab/config.json")
 
 # commands that say nothing about what a tab is for: moving around, looking
@@ -98,12 +100,16 @@ def ask_model(query):
         return ""
 
 
+def head_of(command):
+    """The program a command line runs, without its path."""
+    return re.split(r"[\s;|&]+", command.strip())[0].rsplit("/", 1)[-1]
+
+
 def latest_input():
     """The text to name from: a hook's JSON prompt on stdin, or the argv command."""
     if len(sys.argv) > 1:
         command = " ".join(sys.argv[1:]).strip()
-        head = re.split(r"[\s;|&]+", command)[0].rsplit("/", 1)[-1]
-        if head in set(setting("ignore", IGNORED)) or head in AGENTS:
+        if head_of(command) in set(setting("ignore", IGNORED)) or head_of(command) in AGENTS:
             return ""
         return command
 
@@ -139,8 +145,9 @@ def slug(raw):
 
 def reset(path):
     """Forget the tab's topic so the next input names it afresh."""
+    # a shell hook leaves stdin on the terminal, where there is nothing to read
     try:
-        source = str(json.load(sys.stdin).get("source") or "")
+        source = "" if sys.stdin.isatty() else str(json.load(sys.stdin).get("source") or "")
     except Exception:
         source = ""
 
@@ -171,6 +178,10 @@ def main():
     path = os.path.join(STATE_DIR, re.sub(r"[^A-Za-z0-9]", "_", tab) + ".json")
 
     if "--reset" in sys.argv:
+        reset(path)
+        return
+
+    if len(sys.argv) > 1 and head_of(" ".join(sys.argv[1:])) in RESET_COMMANDS:
         reset(path)
         return
 
@@ -217,10 +228,16 @@ def main():
         return
 
     # a name that keeps surviving is unlikely to need changing, so each
-    # unchanged answer doubles the wait before the next one
+    # unchanged answer doubles the number of inputs skipped before the next
+    # check. Counted in inputs rather than seconds: an hour away from the
+    # keyboard changes nothing about what the tab is for.
     kept = state.get("kept", 0)
-    pace = min(float(setting("throttle", 30)) * (2 ** kept), float(setting("throttle_max", 900)))
-    if ours and time.time() - state.get("asked_at", 0) < pace:
+    seen = state.get("seen", 0) + 1
+    if ours and seen < min(int(setting("pace", 1)) * (2 ** kept), int(setting("pace_max", 32))):
+        state["seen"] = seen
+        os.makedirs(STATE_DIR, exist_ok=True)
+        with open(path, "w") as handle:
+            json.dump(state, handle)
         return
 
     anchor = state.get("anchor") or text[:MAX_INPUT]
@@ -229,7 +246,7 @@ def main():
     if not name:
         return
 
-    state.update(anchor=anchor, asked_at=time.time(), kept=kept + 1 if name == ours else 0)
+    state.update(anchor=anchor, asked_at=time.time(), seen=0, kept=kept + 1 if name == ours else 0)
     if name != ours:
         subprocess.run(["herdr", "tab", "rename", tab, name], capture_output=True, timeout=5)
         state["name"] = name
