@@ -7,6 +7,7 @@ import re
 import subprocess
 import sys
 import time
+import shlex
 import urllib.request
 
 MAX_LEN = 16
@@ -103,6 +104,60 @@ def ask_model(query):
             return json.load(response)["choices"][0]["message"]["content"]
     except Exception:
         return ""
+
+
+# ssh options that take a value, so the token after them is never the host
+SSH_VALUE_FLAGS = set("bcDEeFIiJLlmOopQRSWw")
+
+
+def ssh_host(command):
+    """The host an ssh-style command connects to, or "" when it names none."""
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        tokens = command.split()
+
+    host, index = "", 1
+    while index < len(tokens):
+        token = tokens[index]
+        if token.startswith("-"):
+            # -p 2222 hides the host one token further along; -p2222 does not
+            index += 2 if len(token) == 2 and token[1] in SSH_VALUE_FLAGS else 1
+            continue
+        # sshpass ssh host, and ssh -- host, both put a word before the host
+        if token in ("ssh", "mosh", "--"):
+            index += 1
+            continue
+        host = token
+        break
+
+    if not host:
+        return ""
+
+    host = re.sub(r"^[a-z]+://", "", host).split("/")[0]
+    host = host.rsplit("@", 1)[-1]
+
+    bracketed = re.match(r"^\[(.+)\]", host)
+    if bracketed:
+        return bracketed.group(1)
+
+    # a lone colon is a port; several mean this is a bare IPv6 address
+    return host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+
+
+def ssh_label(command):
+    """A tab name for an ssh-style command: the host, never the user."""
+    host = ssh_host(command)
+    if not host:
+        return ""
+
+    # an address has no memorable part, so the last group stands in for it
+    if re.fullmatch(r"[0-9.]+", host):
+        return "ssh-" + host.rsplit(".", 1)[-1]
+    if ":" in host:
+        return "ssh-" + host.rsplit(":", 1)[-1]
+
+    return host.split(".")[0]
 
 
 def idle_label():
@@ -285,6 +340,19 @@ def main():
     if len(sys.argv) > 1 and head_of(" ".join(sys.argv[1:])) in set(setting("takeover", TAKEOVER)):
         ours = None
         state.pop("anchor", None)
+
+        # the host is the answer and parsing finds it exactly, so no model is
+        # asked. It would otherwise reach for the user, which is the same on
+        # every machine and identifies none of them.
+        direct = slug(ssh_label(" ".join(sys.argv[1:])))
+        if direct:
+            state.update(anchor=text, asked_at=time.time(), seen=0, kept=0, name=direct)
+            state.pop("fresh", None)
+            subprocess.run(["herdr", "tab", "rename", tab, direct], capture_output=True, timeout=5)
+            os.makedirs(STATE_DIR, exist_ok=True)
+            with open(path, "w") as handle:
+                json.dump(state, handle)
+            return
     elif ours and len(sys.argv) > 1:
         return
 

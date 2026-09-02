@@ -95,9 +95,12 @@ A shell tab is named once, so later commands leave it alone. `ssh` is the except
 npm run dev --workspace api   ->  api
 git status                    ->  api        unchanged
 ssh deploy@prod-01            ->  prod-01
+ssh longc@192.168.100.121     ->  ssh-121
 mosh backup-2                 ->  backup-2
 htop                          ->  backup-2   unchanged
 ```
+
+An ssh command is named by parsing, not by the model: the host is the answer and there is no judgment in finding it. A model reaches for the user instead, which is the same on every machine and identifies none of them. Options that take a value are stepped over, a trailing remote command is ignored, a domain keeps its first label, and an address keeps its last group. `test_ssh_label.py` holds the cases. Naming this way is also free and instant.
 
 `htop`, `btop` and `top` are deliberately not in the list. They hold the pane too, but they do not make the existing name wrong: you are still working on the same thing, just looking at a process list, and a tab called `api` should still say `api` when you quit. Editors are left out for the same reason — opening a config file for ten seconds should not rename the tab. Add any of them to `takeover` if you disagree.
 
