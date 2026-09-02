@@ -40,6 +40,8 @@ auto-title → auto-title → auto-title → auto-title → door-cam
 
 Set `temperature: 0` (the default here) so the same input gives the same answer.
 
+The number rule is scoped to the anchor for the same reason. A message that merely *quotes* a number — asking to change a line that happens to start with `6921` — was enough to rename the tab `6921`, because a bare number at the start of a sentence looks exactly like the work being named. Only the anchor can put a number in a tab name. `test_prompt.py` holds this and the other cases that have gone wrong.
+
 ## Install
 
 ```sh

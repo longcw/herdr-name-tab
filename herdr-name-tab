@@ -48,7 +48,7 @@ A name is:
 - one word; two only when one cannot identify the work; never three
 - all lowercase, a hyphen between two words, no spaces or punctuation
 - at most 16 characters
-- just the number when the work ITSELF is an issue, PR or ticket. A number mentioned in passing is not the name
+- just the number when ANCHOR is itself about an issue, PR or ticket. A number appearing anywhere else - quoted, cited, discussed in LATEST - is not the name
 - the distinctive term, never a general one. agent, cloud, code, session, protocol, task, server, api, fix, test, update, plugin are general - reach past them for what makes THIS work different
 
 ANCHOR is the first thing typed in this tab. It defines what the tab is for.
