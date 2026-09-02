@@ -110,10 +110,17 @@ An ssh command is named by parsing, not by the model: the host is the answer and
 
 A tab with no name is named at once. After that the number of inputs skipped doubles with every answer that leaves the name alone, so checks fall on turns 1, 2, 4, 8, 16, 32, and then every 32 for as long as the tab lives — six calls across forty prompts, nine across a hundred. It never stops checking; it just checks rarely. A name that *does* change resets the pace to every turn.
 
-```
-pace: 1        inputs skipped after the first surviving answer
-pace_max: 32   ceiling once the name has settled
-```
+The gap between checks is `pace x 2^(answers that changed nothing)`, capped at `pace_max`. So `pace` is the first gap and `pace_max` is where the doubling stops:
+
+| `pace` | `pace_max` | checked on turns | |
+| --- | --- | --- | --- |
+| 1 | 32 | 1, 2, 4, 8, 16, 32, 64, 96… | the default |
+| 2 | 32 | 1, 3, 7, 15, 31, 63… | start wider |
+| 1 | 1 | every turn | |
+| 2 | 2 | every 2nd turn | |
+| 1 | 8 | 1, 2, 4, 8, 16, 24, 32… | widen, but only to 8 |
+
+**Setting `pace_max` to the same value as `pace` turns the doubling off**, which is how you get a fixed cadence. A tab with no name is always checked at once, whatever these say.
 
 **Pacing counts inputs, never seconds.** An hour away from the keyboard changes nothing about what a tab is for, and a wall clock would spend a call to rediscover that on your first prompt back.
 
