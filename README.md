@@ -191,6 +191,15 @@ recent names
 
 *namings* counts every time a tab was named; *calls* counts the ones that asked a model, so an ssh name shows as a naming and not a call. Every naming is appended to `~/.local/state/herdr-tab-names/calls.jsonl` — one JSON object per line, holding the input, the name, the tokens, the model and the time taken. It, which is halved when it passes 2 MB rather than growing without limit. The inputs recorded are the same capped 240 characters that were sent.
 
+## Naming a tab on demand
+
+```
+herdr-name-tab --rename                       # from what the pane is doing
+herdr-name-tab --rename "the payment webhook retries forever"
+```
+
+Names the tab straight away from a clean state, rather than waiting for the next prompt or command. With text, it names from that. Without, it uses what an agent pane says it is working on — a shell pane has only its prompt there, so it asks for text instead. Either way it overrides a name you set by hand, because asking for it is unambiguous.
+
 ## Naming a tab yourself
 
 Rename a tab by hand and the script never touches it again — the name is yours.

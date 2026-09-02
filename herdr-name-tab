@@ -450,6 +450,52 @@ def watch(days):
         pass
 
 
+def rename_now(path, tab, given):
+    """Name the tab from a clean state, right now, without waiting for input."""
+    source = given
+    if not source:
+        # what the pane says it is doing: an agent puts its topic here
+        try:
+            panes = json.loads(subprocess.run(
+                ["herdr", "api", "snapshot"], capture_output=True, text=True, timeout=5
+            ).stdout)["result"]["snapshot"]["panes"]
+            pane = next((p for p in panes if p["pane_id"] == os.environ.get("HERDR_PANE_ID")), {})
+            # only an agent puts its topic in the title; a shell puts its prompt
+            if pane.get("agent"):
+                source = (pane.get("title") or pane.get("terminal_title_stripped") or "").strip()
+        except Exception:
+            source = ""
+
+    if not source:
+        try:
+            with open(path) as handle:
+                source = json.load(handle).get("anchor") or ""
+        except Exception:
+            source = ""
+
+    if not source:
+        print("nothing to name this tab from: pass some text, or type something in it first")
+        return 1
+
+    source = source[:MAX_INPUT]
+    answer, usage = ask_model(f"{PROMPT}\n\nANCHOR: {source}\nNAME: (none)\nLATEST: {source}\n")
+    name = slug(answer)
+    if not name:
+        print("the model gave no usable name")
+        return 1
+
+    record({"tab": tab, "kind": "manual", "input": source, "was": None, "name": name,
+            "changed": True, "model": setting("model", ""), "ms": 0,
+            "tokens_in": usage.get("prompt_tokens"), "tokens_out": usage.get("completion_tokens")})
+    subprocess.run(["herdr", "tab", "rename", tab, name], capture_output=True, timeout=5)
+    os.makedirs(STATE_DIR, exist_ok=True)
+    with open(path, "w") as handle:
+        json.dump({"anchor": source, "name": name, "asked_at": time.time(), "seen": 0, "kept": 0}, handle)
+
+    print(f"{tab} -> {name}")
+    return 0
+
+
 def main():
     if "--watch" in sys.argv:
         rest = [a for a in sys.argv[sys.argv.index("--watch") + 1:] if a.isdigit()]
@@ -466,6 +512,10 @@ def main():
         return
 
     path = os.path.join(STATE_DIR, re.sub(r"[^A-Za-z0-9]", "_", tab) + ".json")
+
+    if "--rename" in sys.argv:
+        given = " ".join(sys.argv[sys.argv.index("--rename") + 1:]).strip()
+        sys.exit(rename_now(path, tab, given))
 
     if "--reset" in sys.argv:
         reset(path, tab)
